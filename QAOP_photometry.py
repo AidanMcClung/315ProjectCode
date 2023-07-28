@@ -109,51 +109,35 @@ def doForFile(filepath,names,apertures,annuli):
     #I need to do something better with the output from this; like saving it to a table
     return img_time, doForApertures(image,names,apertures,annuli,wcs)
 
-def createFolders():
-    if not os.listdir().count('photometry'): os.mkdir('photometry')
-    #MasterResultTab = createMasterTable()
-    #MasterResultTab.write('photometry/master_table.ecsv',format='ascii.ecsv')
+class photInstance:#(apertureFilePath='apertures.csv',resultDir='photometry'):
+    #names = [] #I believe these C# style declarations are automatically handled by __init__.
+    #apertures = []
+    #annuli = []
+    master_history = []
     
-def createMasterTable():
-    ApNames,trash,trash = loadAperturesFromFile()
-    MasterResultTab = Table(names=np.hstack(('Time',ApNames)),dtype=np.hstack((str,np.full(len(ApNames),dict))))
-    MasterResultTab.write('photometry/master_table.ecsv',format='ascii.ecsv')
-    return MasterResultTab
-
-def checkMasterTable():
-    files = os.listdir('photometry')
-    master_count = files.count('master_table.ecsv')
-    if master_count:
-        return Table.read('photometry/master_table.ecsv')
-    else:
-        return createMasterTable
+    def __init__(self,apertureFilePath='apertures.csv',resultDir='photometry'):
+        self.names,self.apertures,self.annuli = loadAperturesFromFile(apertureFilePath)
+        #now, check there's a results dir in the root, and make one if not
+        if not os.listdir().count(resultDir): os.mkdir(resultDir)
+        #now that we know the directoru exists, we can safely check how many master_table are in it :)
+        master_count = os.listdir(resultDir).count('master_table.ecsv')
+        if master_count:
+            self.master_tab = Table.read('photometry/master_table.ecsv')
+        elif not master_count:
+            self.master_tab = self.createMasterTable()
     
-def prepareFileSet():
-    if not os.listdir().count('photometry_image_input'): os.mkdir('photometry_image_input')
-    if os.listdir().count('output'):
-        print("I can't yet copy files myself, please copy and paste the files from output to the photometry input.")
-        
-def runOnFileSet():
-    '''This method is expecting there to be a folder in the root directory called "photometry_image_input". It will run its photometry using "apertures.csv" on each of the fit or fits files in the input directory.'''
-    input_files = os.listdir('photometry_image_input')
-    fits_files = []
-    #filter out non-fits files
-    for file in input_files:
-        if file[-5] == '.fits' or file[-4] == '.fit':
-            fits_files.append(file)
-    #now we need to create the master table
-    MasterResultTable = checkMasterTable()
-    #and we need to make sure our apertures are prepped
-    names,apertures,annuli = loadAperturesFromFile(ApertureFilePath)
+    def createMasterTable(self):
+        MasterResultTab = Table(names=np.hstack(('Time',self.names)),dtype=np.hstack((str,np.full(len(self.names),dict))))
+        MasterResultTab.write(self.resultDir+'/master_table.ecsv',format='ascii.ecsv')
+        return MasterResultTab
     
-    for file in fits_files:
-        img_time,results = doForFile('photometry_image_input/'+file,names,apertures,annuli)
-        addRowToMaster(MasterResultTab,img_time,results)
-    MasterResultTable.write('photometry/master_table.ecsv',format='ascii.ecsv',overwrite=True)
-        
-    #testimg_time, testResults = doForFile(testfilepath,names,apertures,annuli)
-
-def addRowToMaster(MasterResultTab,time,results):
-    row_to_add = results.copy()
-    row_to_add['Time'] = time
-    MasterResultTab.add_row(row_to_add)
+    def runForFile(self,filepath):
+        image,wcs,img_time = loadImageAndWCS(filepath)
+        resultDict = doForApertures(image,self.names,self.apertures,self.annuli,wcs)
+        resultDict['Time'] = img_time
+        self.addRowToMaster(resultDict,history_note="file:"+filepath)
+        return resultDict
+    
+    def addRowToMaster(self,row_to_add,history_note=""):
+        self.master_history.append(str(len(self.master_history))+':'+history_note)
+        self.master_tab.add_row(row_to_add)

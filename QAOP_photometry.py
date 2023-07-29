@@ -181,4 +181,66 @@ class photInstance:
         self.master_tab.write(self.resultDir+'/master_table.ecsv',format='ascii.ecsv',overwrite=True)#save the new table
         with open(self.resultDir+'/master_log.txt','a') as log: #open in "append" mode
             log.write('\r\n'+self.master_history[-1]) #write the last item (which we added 4 lines above) to the file
+            
+
+    def exportMasterAsTables(self,resultValueNames=["aperture_raw_sum","aperture_area","annulus_median","background_to_subtract","aperture_sum"]):
+        '''This method will take the 3D (V:time/file,H:name/source,D:resultValue) Master table and unpack it into tables for each source. (ie, V,D slices)
+        These new tables are saved to the (default, or specified alternative) "photometry" folder. See also the other export methods if a different data slice is desired. If changes are ever made to what "depth values" are used/desired, that list is defined as a default property and can be changed, though this is untested.'''
+        time_column = self.master_tab['Time']
+        col_names = np.hstack(('time',resultValueNames)) #we want time, and a column for each value
+        col_dtypes = np.hstack((str,np.full(len(resultValueNames),float))) #first column is a string, the rest are numbers
         
+        for source_name in self.names:
+            master_table_column = self.master_tab[source_name]
+            tempTable = Table(names=col_names,dtype=col_dtypes)
+            for r in range(len(time_column)):
+                new_row = master_table_column[r] #add the r-th cell's values to the new row
+                new_row['time'] = time_column[r] #add the r-th time to the new row
+                tempTable.add_row(new_row) #and add the new row
+            #then we need to save this table
+            tempTable.write(self.resultDir+'/'+source_name+'.ecsv',format='ascii.ecsv',overwrite=True)
+            #and then we repeat that for each of the sources
+        #Done source-wise export
+        
+    def exportMasterAsSimple(self):
+        '''This export method creates a table with the same V/H as the master, but the depth has been simplified to only be the final "aperture_sum" value.
+        
+        Unlike the other two export functions, note that this one returns its table. This is so that you can get the table externally and make use of it without haveing to load in the exported file.
+        '''
+        col_names = np.hstack(('time',self.names))#we want time, and a column for each of the names. 
+        #Note this is technically the result of the createMasterTable function that I could have reused, except we want different data types
+        col_dtypes = np.hstack((str,np.full(len(self.names),float))) #set first column to a string and the rest to floats
+        
+        new_table = Table(names=col_names,dtype=col_dtypes)
+        #now we just need to iterate through every row (and cell) and add those to this table
+        
+        for r in range(len(self.master_tab)):
+            old_row = self.master_tab[r]
+            new_row = {'time':old_row['Time']} #create a dictionary with time named
+            
+            for srcname in self.names:
+                srcsum = old_row[srcname]['aperture_sum']
+                new_row[srcname] = srcsum #add the new item to the dictionary
+            
+            new_table.add_row(new_row)
+        
+        #now we need to save the table to a file
+        new_table.write(self.resultDir+'/'+'simple'+'.ecsv',format='ascii.ecsv',overwrite=True)
+        return new_table #done simple export
+        
+    def exportMasterAsValues(self,resultValueNames=["aperture_raw_sum","aperture_area","annulus_median","background_to_subtract","aperture_sum"]):
+        '''This export method creates a matched V/H table for each of the layers depthwise (ie a 'raw_sum' table, a 'area' table, etc). 
+        It works in exactly the same way as the simple export but with more values. See that function for a more readable understanding of whats going on in the source code.'''
+        col_names = np.hstack(('time',self.names))#we want time, and a column for each of the names. 
+        col_dtypes = np.hstack((str,np.full(len(self.names),float))) #set first column to a string and the rest to floats
+        for value_name in resultValueNames:
+            new_table = Table(names=col_names,dtype=col_dtypes) #create a table for this value
+            for r in range(len(self.master_tab)):
+                old_row = self.master_tab[r]
+                new_row = {'time':old_row['Time']} #create a dictionary with time named to start
+                for srcname in self.names: #now loop through and add each column to the dictionary
+                    srcsum = old_row[srcname][value_name]
+                    new_row[srcname] = srcsum #add the new item to the dictionary
+                new_table.add_row(new_row)
+            new_table.write(self.resultDir+'/'+value_name+'.ecsv',format='ascii.ecsv',overwrite=True) #save the table for this value to a file
+        #done Value-wise export
